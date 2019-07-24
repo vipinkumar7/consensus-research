@@ -1,0 +1,7 @@
+consensus.research/target/
+consensus.research/target/*
+consensus.research/.settings/
+consensus.research/.settings/*
+consensus.research/.settings
+consensus.research/.classpath
+consensus.research/.project
