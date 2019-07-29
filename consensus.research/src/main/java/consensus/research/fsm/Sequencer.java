@@ -2,7 +2,7 @@ package consensus.research.fsm;
 
 import java.util.concurrent.TimeUnit;
 
-import akka.actor.AbstractActor;
+import akka.actor.AbstractLoggingActor;
 import akka.actor.ActorSelection;
 import akka.actor.Props;
 import akka.dispatch.OnComplete;
@@ -12,7 +12,7 @@ import consensus.research.messages.ClientRequest;
 import scala.concurrent.Future;
 import scala.concurrent.duration.Duration;
 
-public class Sequencer extends AbstractActor {
+public class Sequencer extends AbstractLoggingActor {
 
 	private int cid = 0;
 	private Timeout tc = new Timeout(Duration.create(2, TimeUnit.SECONDS));
@@ -47,16 +47,16 @@ public class Sequencer extends AbstractActor {
 
 	@Override
 	public Receive createReceive() {
-		return receiveBuilder().matchEquals("sequence", message -> {
+		Receive build = receiveBuilder().matchEquals("sequence", message -> {
 			Future<Object> member = decide("get");
 			member.onComplete(new OnComplete<Object>() {
 
 				@Override
 				public void onComplete(Throwable failure, Object success) throws Throwable {
 					if (failure == null) {
-						System.out.println("GOT :: " + (Integer) success);
+						log().info("GOT :: " + (Integer) success);
 					} else {
-						System.out.println("GOT ERROR " + failure.getMessage());
+						log().info("GOT ERROR " + failure.getMessage());
 					}
 
 				}
@@ -66,7 +66,11 @@ public class Sequencer extends AbstractActor {
 					, getContext().dispatcher());
 
 		}).build();
+
+		getContext().system().scheduler().scheduleOnce(Duration.create(50L, TimeUnit.MILLISECONDS), getSelf(),
+				"sequence", getContext().dispatcher(), null);
+		return build;
+
 	}
 
-	
 }

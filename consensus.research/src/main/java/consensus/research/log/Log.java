@@ -91,7 +91,7 @@ public class Log {
 		Map<ActorRef, Integer> new_matchIndex = new HashMap<ActorRef, Integer>(matchIndex);
 		return new Log(entries.copy(), new_nextIndex, new_matchIndex, commitIndex, lastApplied);
 	}
-	
+
 	public Log copy(List<Entry> en) {
 		Map<ActorRef, Integer> new_nextIndex = new HashMap<ActorRef, Integer>(nextIndex);
 		Map<ActorRef, Integer> new_matchIndex = new HashMap<ActorRef, Integer>(matchIndex);
@@ -136,5 +136,9 @@ public class Log {
 
 	public void setLastApplied(Integer lastApplied) {
 		this.lastApplied = lastApplied;
+	}
+
+	public Log copy(Map<ActorRef, Integer> new_nextIndex, Map<ActorRef, Integer> new_matchIndex) {
+		return new Log(entries.copy(), new_nextIndex, new_matchIndex, commitIndex, lastApplied);
 	}
 }

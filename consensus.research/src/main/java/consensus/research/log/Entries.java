@@ -1,5 +1,7 @@
 package consensus.research.log;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import consensus.research.election.Term;
@@ -51,8 +53,17 @@ public abstract class Entries {
 	public Entry get(int index) {
 		return log.get(index - 1);
 	}
-	
+
 	public abstract Entries copy();
-	
+
 	public abstract Entries copy(List<Entry> en);
+
+	public List<Entry> takeRight(int num) {
+		List<Entry> en = new ArrayList<Entry>();
+		for (int i = num; i >= 0; i--) {
+			en.add(log.get(i));
+		}
+		Collections.reverse(en);
+		return en;
+	}
 }
