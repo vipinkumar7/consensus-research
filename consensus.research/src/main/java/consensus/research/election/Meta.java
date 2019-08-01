@@ -1,6 +1,7 @@
 package consensus.research.election;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import akka.actor.ActorRef;
@@ -14,7 +15,7 @@ public class Meta {
 
 	private Term term;
 	private Log log;
-	private TotalOrdering rsm;
+	private final TotalOrdering rsm;
 	private List<ActorRef> nodes;
 	private Votes votes = new Votes();
 	private ActorRef leader;
@@ -75,10 +76,6 @@ public class Meta {
 		return rsm;
 	}
 
-	public void setRsm(TotalOrdering rsm) {
-		this.rsm = rsm;
-	}
-
 	public List<ActorRef> getNodes() {
 		return nodes;
 	}
@@ -99,4 +96,9 @@ public class Meta {
 		return leader;
 	}
 
+	@Override
+	public String toString() {
+		return " Meta(" + term.toString() + " , " + log.toString() + " , " + rsm.toString() + " , Nodes: " + Arrays.toString(nodes.toArray())
+				+ " , " + votes.toString() + " , Leader: " + leader + ")";
+	}
 }

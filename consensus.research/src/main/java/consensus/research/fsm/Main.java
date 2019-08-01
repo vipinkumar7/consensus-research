@@ -1,6 +1,5 @@
 package consensus.research.fsm;
 
-import java.io.Console;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,12 +19,10 @@ public class Main {
 			}
 			
 			for (ActorRef ref : refs) {
-				ref.tell(new Init(refs), ref);
+				ref.tell(new Init(refs), ActorRef.noSender());
 			}
 			
 			ActorRef client = system.actorOf(Sequencer.props(), "client");
-			
-			
 			
 			System.out.println("Press ENTER to exit the system");
 			System.in.read();

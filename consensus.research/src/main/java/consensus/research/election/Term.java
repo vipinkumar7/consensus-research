@@ -2,7 +2,7 @@ package consensus.research.election;
 
 public class Term implements Comparable<Term> {
 
-	Integer current;
+	private final Integer current;
 
 	public Term(Integer current) {
 
@@ -31,8 +31,14 @@ public class Term implements Comparable<Term> {
 			return t2;
 
 	}
-	
+
 	public Term copy() {
 		return new Term(this.current);
+	}
+
+	@Override
+	public String toString() {
+
+		return " Term ("+ current +" ) ";
 	}
 }

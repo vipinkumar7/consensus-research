@@ -2,29 +2,32 @@ package consensus.research.messages;
 
 import consensus.research.election.Term;
 
+/**
+ * 
+ * @author kvipin
+ *
+ */
 public class AppendSuccess extends AppendReply {
 
-	private Term term;
-	private int index;
-
-	public int getIndex() {
-		return index;
-	}
-
-	public void setIndex(int index) {
-		this.index = index;
-	}
+	private final Term term;
+	private final int index;
 
 	public AppendSuccess(Term term, int index) {
 		this.term = term;
 		this.index = index;
 	}
 
-	public Term getTerm() {
-		return term;
+	public int getIndex() {
+		return index;
 	}
 
-	public void setTerm(Term term) {
-		this.term = term;
+	public Term getTerm() {
+		return term.copy();
 	}
+
+	@Override
+	public String toString() {
+		return "AppendSuccess( " + term.toString() + " Index  : " + index + ")";
+	}
+
 }

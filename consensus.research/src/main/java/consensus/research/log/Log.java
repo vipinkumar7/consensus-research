@@ -3,16 +3,17 @@ package consensus.research.log;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import akka.actor.ActorRef;
 
 public class Log {
 
-	private Entries entries;
-	private Map<ActorRef, Integer> nextIndex;
-	private Map<ActorRef, Integer> matchIndex;
-	private Integer commitIndex = 0;
-	private Integer lastApplied = 0;
+	private final Entries entries;
+	private final Map<ActorRef, Integer> nextIndex;
+	private final Map<ActorRef, Integer> matchIndex;
+	private final Integer commitIndex;
+	private final Integer lastApplied;
 
 	public Log(Entries entries, List<ActorRef> nodes) {
 		int nextIndex = entries.lastIndex() + 1;
@@ -27,18 +28,20 @@ public class Log {
 		this.nextIndex = nextIndices;
 		this.matchIndex = matchIndices;
 		this.entries = entries;
-
+		this.commitIndex = 0;
+		this.lastApplied = 0;
 	}
 
-	private Log(Entries entries, Map<ActorRef, Integer> nextIndex, Map<ActorRef, Integer> matchIndex,
+	public Log(Entries entries, Map<ActorRef, Integer> nextIndex, Map<ActorRef, Integer> matchIndex,
 			Integer commitIndex) {
 		this.entries = entries;
 		this.nextIndex = nextIndex;
 		this.matchIndex = matchIndex;
 		this.commitIndex = commitIndex;
+		this.lastApplied = 0;
 	}
 
-	private Log(Entries entries, Map<ActorRef, Integer> nextIndex, Map<ActorRef, Integer> matchIndex,
+	public Log(Entries entries, Map<ActorRef, Integer> nextIndex, Map<ActorRef, Integer> matchIndex,
 			Integer commitIndex, Integer lastApplied) {
 		this.entries = entries;
 		this.nextIndex = nextIndex;
@@ -65,11 +68,11 @@ public class Log {
 		Map<ActorRef, Integer> new_nextIndex = new HashMap<ActorRef, Integer>(nextIndex);
 		if (to != null) {
 			Map<ActorRef, Integer> new_matchIndex = new HashMap<ActorRef, Integer>(matchIndex);
-			new_nextIndex.put(node, to);
+			new_matchIndex.put(node, to);
 			return new Log(entries.copy(), new_nextIndex, new_matchIndex, commitIndex);
 		} else {
 			Map<ActorRef, Integer> new_matchIndex = new HashMap<ActorRef, Integer>(matchIndex);
-			new_nextIndex.put(node, new_matchIndex.get(node) + 1);
+			new_matchIndex.put(node, matchIndex.get(node) + 1);
 			return new Log(entries.copy(), new_nextIndex, new_matchIndex, commitIndex);
 		}
 	}
@@ -99,46 +102,44 @@ public class Log {
 	}
 
 	public Entries getEntries() {
-		return entries;
-	}
-
-	public void setEntries(Entries entries) {
-		this.entries = entries;
+		return entries.copy();
 	}
 
 	public Map<ActorRef, Integer> getNextIndex() {
-		return nextIndex;
-	}
-
-	public void setNextIndex(Map<ActorRef, Integer> nextIndex) {
-		this.nextIndex = nextIndex;
+		return new HashMap<ActorRef, Integer>(nextIndex);
 	}
 
 	public Map<ActorRef, Integer> getMatchIndex() {
-		return matchIndex;
-	}
-
-	public void setMatchIndex(Map<ActorRef, Integer> matchIndex) {
-		this.matchIndex = matchIndex;
+		return new HashMap<ActorRef, Integer>(matchIndex);
 	}
 
 	public Integer getCommitIndex() {
 		return commitIndex;
 	}
 
-	public void setCommitIndex(Integer commitIndex) {
-		this.commitIndex = commitIndex;
-	}
-
 	public Integer getLastApplied() {
 		return lastApplied;
 	}
 
-	public void setLastApplied(Integer lastApplied) {
-		this.lastApplied = lastApplied;
-	}
-
 	public Log copy(Map<ActorRef, Integer> new_nextIndex, Map<ActorRef, Integer> new_matchIndex) {
 		return new Log(entries.copy(), new_nextIndex, new_matchIndex, commitIndex, lastApplied);
+	}
+
+	@Override
+	public String toString() {
+		return "Entries ( " + entries.toString() + " NextIndex:" + toStringMap(nextIndex) + "MatchIndex:" + toStringMap(matchIndex)
+				+ " commitIndex: " + commitIndex + "LastApplied:" + lastApplied + ")";
+	}
+	
+	private String toStringMap(Map<ActorRef, Integer> map) {
+		StringBuilder builder=new StringBuilder();
+		builder.append("{");
+		Set<java.util.Map.Entry<ActorRef, Integer>> enSet=map.entrySet();
+		for (java.util.Map.Entry<ActorRef, Integer> en:enSet) {
+			builder.append(en.getKey()+" : "+ en.getValue());
+		}
+		builder.append("}");
+		return builder.toString();
+		
 	}
 }

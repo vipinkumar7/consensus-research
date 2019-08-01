@@ -49,7 +49,6 @@ public class Raft extends AbstractLoggingFSM<Role, Meta> {
 
 	@Override
 	public int logDepth() {
-
 		return 12;
 	}
 
@@ -60,7 +59,7 @@ public class Raft extends AbstractLoggingFSM<Role, Meta> {
 	{
 		startWith(Initialise, new Meta(new ArrayList<>()));
 
-		when(Initialise, matchEvent(Init.class, Meta.class, (cluster, data) -> goTo(Follower).using(initialised(cluster))));
+		when(Initialise, matchEvent(Init.class, (cluster, any) -> eventMatcher_Init(cluster)));
 
 		when(Follower, matchEvent(Message.class, Meta.class, (rpc, data) -> eventMatcher_Follower(rpc, data)));
 
@@ -79,7 +78,7 @@ public class Raft extends AbstractLoggingFSM<Role, Meta> {
 					resetTimer();
 				})
 
-				.state(Role.Initialise, Role.Follower, () -> {
+				.state(Initialise, Follower, () -> {
 					resetTimer();
 				}));
 
@@ -94,15 +93,20 @@ public class Raft extends AbstractLoggingFSM<Role, Meta> {
 		}));
 	}
 
+	private State<Role, Meta> eventMatcher_Init(Init cluster) {
+		return goTo(Follower).using(initialised(cluster));
+	}
+
 	public State<Role, Meta> eventMatcher_Follower(Message rpc, Meta data) {
 		if (rpc instanceof RequestVote) {
 			MutablePair<Vote, Meta> res = vote((RequestVote) rpc, data);
 			if (res.getKey() instanceof GrantVote) {
 				resetTimer();
-				return stay().using(res.getValue()).replying(res.getKey());
+				log().info(MkLog.makelog(" returning reply for grant vote  " + res.getKey()));
+				return stay().using(res.getValue()).replying((GrantVote) res.getKey());
 			}
 			if (res.getKey() instanceof DenyVote) {
-				return stay().using(res.getValue()).replying(res.getKey());
+				return stay().using(res.getValue()).replying((DenyVote) res.getKey());
 			}
 		}
 
@@ -110,25 +114,32 @@ public class Raft extends AbstractLoggingFSM<Role, Meta> {
 			data.setLeader(((AppendEntries) rpc).getLeaderId());
 			resetTimer();
 			AppendReply msg = append((AppendEntries) rpc, data);
+			log().info(MkLog.printMap(data.getLog().getNextIndex()));
+			log().info(MkLog.makelog("  follower  append enties request with  " + msg + " and " + data.toString()));
 			return stay().using(data).replying(msg);
 		}
 
 		if (rpc instanceof ClientRequest) {
+			log().info(MkLog.makelog("  received clent request "));
 			forwardRequest((ClientRequest) rpc, data);
 			return stay();
 		}
 
-		if (rpc instanceof TimeOut)
-			return goTo(Role.Candidate).using(preparedForCandidate(data));
-		return stay();
+		if (rpc instanceof TimeOut) {
+			log().info(MkLog.makelog("timed out on follower "));
+			return goTo(Candidate).using(preparedForCandidate(data));
+		}
+		return null;
 	}
 
 	public State<Role, Meta> eventMatcher_Candidate(Message rpc, Meta data) {
 
 		// voting events
 		if (rpc instanceof GrantVote) {
+			log().info(MkLog.makelog(" got vote from " + sender()));
 			data.setVotes(data.getVotes().gotVoteFrom(sender()));
 			if (data.getVotes().majority(data.getNodes().size())) {
+				log().info(MkLog.makelog(" majority gained "));
 				return goTo(Leader).using(preparedForLeader(data));
 			} else
 				return stay().using(data);
@@ -147,8 +158,11 @@ public class Raft extends AbstractLoggingFSM<Role, Meta> {
 		// others
 
 		if (rpc instanceof AppendEntries) {
+
 			data.setLeader(((AppendEntries) rpc).getLeaderId());
 			AppendReply msg = append((AppendEntries) rpc, data);
+			log().info(MkLog
+					.makelog("  candidate got append entries request with " + msg + " and data " + data.toString()));
 			return goTo(Follower).using(preparedForFollower(data)).replying(msg);
 
 		}
@@ -161,12 +175,14 @@ public class Raft extends AbstractLoggingFSM<Role, Meta> {
 		if (rpc instanceof TimeOut) {
 			return goTo(Candidate).using(preparedForCandidate(data));
 		}
-		return stay();
+
+		return null;
 	}
 
 	public State<Role, Meta> eventMatcher_Leader(Message rpc, Meta data) {
 
 		if (rpc instanceof ClientRequest) {
+			log().info(MkLog.makelog(" leader received  client request  "));
 			writeToLog(sender(), (ClientRequest) rpc, data);
 			sendEntries(data);
 			return stay().using(data);
@@ -175,7 +191,9 @@ public class Raft extends AbstractLoggingFSM<Role, Meta> {
 		if (rpc instanceof AppendSuccess) {
 			data.setLog(data.getLog().resetNextFor(sender()));
 			data.setLog(data.getLog().matchFor(sender(), ((AppendSuccess) rpc).getIndex()));
+			log().info(MkLog.printMap(data.getLog().getNextIndex()));
 			leaderCommitEntries((AppendSuccess) rpc, data);
+			log().info(MkLog.makelog("  got success append entries from actor  " + sender()));
 			applyEntries(data);
 			return stay();
 		}
@@ -200,24 +218,28 @@ public class Raft extends AbstractLoggingFSM<Role, Meta> {
 	}
 
 	private void applyEntries(Meta data) {
-		for (int i = data.getLog().getLastApplied(); i <= data.getLog().getCommitIndex(); i++) {
+		for (int i = data.getLog().getLastApplied(); i < data.getLog().getCommitIndex(); i++) {
 			Entry entry = data.getLog().getEntries().get(i);
 			int result = data.getRsm().execute(new Get()); // TODO: make generic
 			data.setLog(data.getLog().applied());
 
 			InternalClientRef ref = entry.getClient();
 			if (ref != null) {
-				ref.getSender().tell(ref.getCid(), sender());// TODO
+				ref.getSender().tell(result, self());
 			}
 		}
 	}
 
 	private void leaderCommitEntries(AppendSuccess rpc, Meta data) {
 		if (rpc.getIndex() >= data.getLog().getCommitIndex()
-				&& data.getLog().getEntries().termOf(rpc.getIndex()).compareTo(data.getTerm()) == 1) {
+				&& data.getLog().getEntries().termOf(rpc.getIndex()).compareTo(data.getTerm()) == 0) {
 			Map<ActorRef, Integer> matches = data.getLog().getMatchIndex();
-			int size = (int) matches.values().stream().filter(x -> (x == rpc.getIndex())).count();
-			if (size >= Math.ceil(data.getNodes().size() / 2.0))
+			int count = 0;
+			for (int k : matches.values()) {
+				if (k == rpc.getIndex())
+					count++;
+			}
+			if (count >= Math.ceil(data.getNodes().size() / 2.0))
 				data.setLog(data.getLog().commit(rpc.getIndex()));
 		}
 	}
@@ -236,7 +258,7 @@ public class Raft extends AbstractLoggingFSM<Role, Meta> {
 	}
 
 	private Meta preparedForLeader(Meta state) {
-		System.out.println("Elected to leader for term: ${state.term}");
+		log().info(MkLog.makelog("Elected to leader for term: " + state.getTerm()));
 		Map<ActorRef, Integer> nexts = state.getLog().getNextIndex();
 
 		Map<ActorRef, Integer> nexts_new = new HashMap<ActorRef, Integer>();
@@ -258,18 +280,20 @@ public class Raft extends AbstractLoggingFSM<Role, Meta> {
 	}
 
 	private void sendEntries(Meta data) {
+		log().info(MkLog.makelog("replicating log"));
 		resetHeartbeatTimer();
 		List<ActorRef> allrefs = data.getNodes();
 		for (ActorRef ref : allrefs) {
 			if (ref != getSelf()) {
 				AppendEntries message = compileMessage(ref, data);
-				ref.tell(message, sender());
+				ref.tell(message, self());
 			}
 		}
 
 	}
 
 	private AppendEntries compileMessage(ActorRef node, Meta data) {
+		log().info(MkLog.printMap(data.getLog().getNextIndex()));
 		int prevIndex = data.getLog().getNextIndex().get(node) - 1;
 		Term prevTerm = data.getLog().getEntries().termOf(prevIndex);
 		int fromMissing = missingRange(data.getLog().getEntries().lastIndex(), prevIndex);
@@ -288,6 +312,8 @@ public class Raft extends AbstractLoggingFSM<Role, Meta> {
 		if (data.getLeader() != null)
 			data.getLeader().forward(rpc, getContext());
 
+		// else drops message, relies on client to retry
+
 	}
 
 	private Meta preparedForCandidate(Meta data) {
@@ -300,7 +326,7 @@ public class Raft extends AbstractLoggingFSM<Role, Meta> {
 		for (ActorRef ref : allrefs) {
 			if (ref != getSelf()) {
 				ref.tell(new RequestVote(data.getTerm(), getSelf(), data.getLog().getEntries().lastIndex(),
-						data.getLog().getEntries().lastTerm()), sender());
+						data.getLog().getEntries().lastTerm()), getSelf());
 			}
 		}
 		resetTimer();
@@ -313,9 +339,9 @@ public class Raft extends AbstractLoggingFSM<Role, Meta> {
 	public AppendReply append(AppendEntries rpc, Meta data) {
 		if (leaderIsBehind(rpc, data))
 			return appendFail(rpc, data);
-		else if (!hasMatchingLogEntryAtPrevPosition(rpc, data))
+		else if (!hasMatchingLogEntryAtPrevPosition(rpc, data)) {
 			return appendFail(rpc, data);
-		else
+		} else
 			return appendSuccess(rpc, data);
 	}
 
@@ -330,22 +356,22 @@ public class Raft extends AbstractLoggingFSM<Role, Meta> {
 
 	private boolean hasMatchingLogEntryAtPrevPosition(AppendEntries rpc, Meta data) {
 		return (rpc.getPrevLogIndex() == 0 || // guards for bootstrap case
-				(data.getLog().getEntries().hasEntryAt(rpc.getPrevLogIndex())
-						&& (data.getLog().getEntries().termOf(rpc.getPrevLogIndex()) == rpc.getPrevLogTerm())));
+				(data.getLog().getEntries().hasEntryAt(rpc.getPrevLogIndex()) && (data.getLog().getEntries()
+						.termOf(rpc.getPrevLogIndex()).compareTo(rpc.getPrevLogTerm()) == 0)));
 	}
 
 	public AppendReply appendSuccess(AppendEntries rpc, Meta data) {
 		data.append(rpc.getEntries(), rpc.getPrevLogIndex());
 		data.setLog(data.getLog().commit(rpc.getLeaderCommit()));
 		followerApplyEntries(data);
-		data.selectTerm(rpc.getTerm().copy());
+		data.selectTerm(rpc.getTerm());
 
 		return new AppendSuccess(data.getTerm(), data.getLog().getEntries().lastIndex());
 	}
 
 	private void followerApplyEntries(Meta data) {
-		for (int i = data.getLog().getLastApplied(); i <= data.getLog().getCommitIndex(); i++) {
-			Entry entry = data.getLog().getEntries().get(i);
+		for (int i = data.getLog().getLastApplied(); i < data.getLog().getCommitIndex(); i++) {
+			//Entry entry = data.getLog().getEntries().get(i);
 			data.getRsm().execute(new Get()); // TODO: make generic
 			data.setLog(data.getLog().applied());
 		}
@@ -358,31 +384,39 @@ public class Raft extends AbstractLoggingFSM<Role, Meta> {
 	public void resetHeartbeatTimer() {
 		cancelTimer("heartbeat");
 		int nextTimeout = (int) ((Math.random() * 100) + 100);
-		setTimer("heartbeat", MessageType.HEARTBEAT, Duration.create(nextTimeout, TimeUnit.SECONDS), false);
+		setTimer("heartbeat", MessageType.HEARTBEAT, Duration.create(nextTimeout, TimeUnit.MILLISECONDS), false);
 	}
 
 	public void resetTimer() {
 		cancelTimer("timeout");
 		int nextTimeout = (int) ((Math.random() * 100) + 200);
-		setTimer("timeout", MessageType.TIMEOUT, Duration.create(nextTimeout, TimeUnit.SECONDS), false);
+		setTimer("timeout", MessageType.TIMEOUT, Duration.create(nextTimeout, TimeUnit.MILLISECONDS), false);
+		
 	}
 
+	/*
+	 * Determine whether to grant or deny vote
+	 */
+
 	public MutablePair<Vote, Meta> vote(RequestVote rpc, Meta data) {
-		if (alreadyVoted(data)) {
+		if (alreadyVoted(rpc, data)) {
 			return deny(rpc, data);
 		} else if (rpc.getTerm().compareTo(data.getTerm()) == -1) {
 			return deny(rpc, data);
-		} else if (rpc.getTerm().compareTo(data.getTerm()) == 1) {
+		} else if (rpc.getTerm().compareTo(data.getTerm()) == 0) {
 			if (candidateLogTermIsBehind(rpc, data)) {
 				return deny(rpc, data);
 			} else if (candidateLogTermIsEqualButHasShorterLog(rpc, data)) {
 				return deny(rpc, data);
-			} else
+			} else {
+				log().info(MkLog.makelog("follower and candidate are equal, grant"));
 				return grant(rpc, data);
-
-		} else
+			}
+		} else {
+			log().info(MkLog.makelog("candidate is ahead, grant"));
 			return grant(rpc, data);
 
+		}
 	}
 
 	public boolean candidateLogTermIsBehind(RequestVote rpc, Meta data) {
@@ -408,10 +442,13 @@ public class Raft extends AbstractLoggingFSM<Role, Meta> {
 		return new MutablePair<>(new GrantVote(data.getTerm()), data);
 	}
 
-	public boolean alreadyVoted(Meta data) {
-		if (data.getVotes().getVotedFor() != null)
-			return true;
-		else
+	public boolean alreadyVoted(RequestVote rpc, Meta data) {
+		if (data.getVotes().getVotedFor() != null) {
+			if (rpc.getTerm().compareTo(data.getTerm()) == 0)
+				return true;
+			else
+				return false;
+		} else
 			return false;
 	}
 

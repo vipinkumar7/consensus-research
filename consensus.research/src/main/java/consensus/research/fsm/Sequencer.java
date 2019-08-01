@@ -3,12 +3,13 @@ package consensus.research.fsm;
 import java.util.concurrent.TimeUnit;
 
 import akka.actor.AbstractLoggingActor;
-import akka.actor.ActorSelection;
+import akka.actor.ActorRef;
 import akka.actor.Props;
 import akka.dispatch.OnComplete;
 import akka.pattern.Patterns;
 import akka.util.Timeout;
 import consensus.research.messages.ClientRequest;
+import scala.concurrent.Await;
 import scala.concurrent.Future;
 import scala.concurrent.duration.Duration;
 
@@ -17,10 +18,13 @@ public class Sequencer extends AbstractLoggingActor {
 	private int cid = 0;
 	private Timeout tc = new Timeout(Duration.create(2, TimeUnit.SECONDS));
 
-	private ActorSelection raftMember = getContext().actorSelection("/user/member*");
+	private Future<ActorRef> raftMember = getContext().actorSelection("/user/member*").resolveOne(tc);
 
-	public Future<Object> decide(String command) {
-		Future<Object> member = Patterns.ask(raftMember, new ClientRequest(tick(), command), tc);
+	public Future<Object> decide(String command) throws Exception {
+
+		ActorRef ref = Await.result(raftMember, Duration.create(2, TimeUnit.MICROSECONDS));
+		log().info("Client Request send to  actor " + ref.toString());
+		Future<Object> member = Patterns.ask(ref, new ClientRequest(tick(), command), tc);
 		return member;
 	}
 
@@ -36,13 +40,13 @@ public class Sequencer extends AbstractLoggingActor {
 	@Override
 	public void preStart() throws Exception {
 
-		getContext().system().scheduler().scheduleOnce(Duration.create(50L, TimeUnit.MILLISECONDS), getSelf(),
+		getContext().system().scheduler().scheduleOnce(Duration.create(50, TimeUnit.MILLISECONDS), getSelf(),
 				"sequence", getContext().dispatcher(), null);
 	}
 
 	@Override
 	public void postRestart(Throwable reason) throws Exception {
-		super.postRestart(reason);
+
 	}
 
 	@Override
@@ -61,14 +65,13 @@ public class Sequencer extends AbstractLoggingActor {
 
 				}
 
-			}
+			}, getContext().dispatcher());
 
-					, getContext().dispatcher());
+			getContext().system().scheduler().scheduleOnce(Duration.create(50, TimeUnit.MILLISECONDS), getSelf(),
+					"sequence", getContext().dispatcher(), null);
 
 		}).build();
 
-		getContext().system().scheduler().scheduleOnce(Duration.create(50L, TimeUnit.MILLISECONDS), getSelf(),
-				"sequence", getContext().dispatcher(), null);
 		return build;
 
 	}

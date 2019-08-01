@@ -1,17 +1,24 @@
 package consensus.research.election;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import akka.actor.ActorRef;
 
+/**
+ * 
+ * @author kvipin
+ *
+ */
 public class Votes {
 
-	private ActorRef votedFor;
-	private List<ActorRef> received = new ArrayList<>();
+	private final ActorRef votedFor;
+	private final List<ActorRef> received;
 
 	public Votes() {
-
+		votedFor = null;
+		received = new ArrayList<ActorRef>();
 	}
 
 	public Votes(ActorRef votedFor, List<ActorRef> received) {
@@ -20,7 +27,7 @@ public class Votes {
 	}
 
 	public Votes gotVoteFrom(ActorRef ref) {
-		List<ActorRef> new_received = new ArrayList<>();
+		List<ActorRef> new_received = new ArrayList<>(received);
 		new_received.add(ref);
 		return new Votes(votedFor, new_received);
 	}
@@ -41,16 +48,13 @@ public class Votes {
 		return votedFor;
 	}
 
-	public void setVotedFor(ActorRef votedFor) {
-		this.votedFor = votedFor;
-	}
-
 	public List<ActorRef> getReceived() {
-		return received;
+		return new ArrayList<>(received);
 	}
 
-	public void setReceived(List<ActorRef> received) {
-		this.received = received;
+	@Override
+	public String toString() {
+		return "[ Actor Votefor: " + votedFor + "Received " + Arrays.toString(received.toArray()) + "]";
 	}
 
 }

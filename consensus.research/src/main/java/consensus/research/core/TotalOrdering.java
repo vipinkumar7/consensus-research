@@ -6,10 +6,10 @@ public class TotalOrdering extends ReplicatedStateMachine<Integer> {
 
 	@Override
 	public Integer execute(Command<Integer> command) {
-		
+
 		switch (command.getType()) {
 		case GET:
-			state=state+1;
+			state = state + 1;
 			break;
 
 		default:
@@ -18,4 +18,8 @@ public class TotalOrdering extends ReplicatedStateMachine<Integer> {
 		return state;
 	}
 
+	@Override
+	public String toString() {
+		return " TotelOrdering( State :" + state + " )";
+	}
 }
